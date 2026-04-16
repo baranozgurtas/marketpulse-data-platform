@@ -1,0 +1,118 @@
+version: '3.8'
+
+# MarketPulse Data Platform — Local Development Environment
+# Runs Airflow (webserver + scheduler) and Spark master/worker
+
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: Dockerfile.airflow
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
+    # Snowflake connection — override with your credentials
+    AIRFLOW_CONN_SNOWFLAKE_DEFAULT: 'snowflake://user:password@account/MARKETPULSE?warehouse=COMPUTE_WH'
+  volumes:
+    - ../dags:/opt/airflow/dags
+    - ../spark_jobs:/opt/airflow/spark_jobs
+    - ../config:/opt/airflow/config
+    - airflow-logs:/opt/airflow/logs
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  # -----------------------------------------------
+  # PostgreSQL — Airflow metadata database
+  # -----------------------------------------------
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+
+  # -----------------------------------------------
+  # Airflow Init — DB migration + admin user
+  # -----------------------------------------------
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create \
+          --username admin \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@marketpulse.dev \
+          --password admin
+    restart: "no"
+
+  # -----------------------------------------------
+  # Airflow Webserver — UI at http://localhost:8080
+  # -----------------------------------------------
+  airflow-webserver:
+    <<: *airflow-common
+    command: airflow webserver
+    ports:
+      - "8080:8080"
+    restart: always
+
+  # -----------------------------------------------
+  # Airflow Scheduler — DAG execution
+  # -----------------------------------------------
+  airflow-scheduler:
+    <<: *airflow-common
+    command: airflow scheduler
+    restart: always
+
+  # -----------------------------------------------
+  # Spark Master
+  # -----------------------------------------------
+  spark-master:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    command: /opt/spark/sbin/start-master.sh
+    environment:
+      SPARK_MASTER_HOST: spark-master
+      SPARK_MASTER_PORT: 7077
+    ports:
+      - "7077:7077"
+      - "8081:8080"  # Spark Master UI
+    volumes:
+      - ../spark_jobs:/opt/spark-jobs
+      - ../config:/opt/config
+
+  # -----------------------------------------------
+  # Spark Worker
+  # -----------------------------------------------
+  spark-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    command: /opt/spark/sbin/start-worker.sh spark://spark-master:7077
+    environment:
+      SPARK_WORKER_MEMORY: 2g
+      SPARK_WORKER_CORES: 2
+    depends_on:
+      - spark-master
+    volumes:
+      - ../spark_jobs:/opt/spark-jobs
+
+volumes:
+  postgres-data:
+  airflow-logs:
