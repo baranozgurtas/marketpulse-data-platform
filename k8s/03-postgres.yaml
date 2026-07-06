@@ -1,0 +1,78 @@
+# Airflow metadata database. Single replica with a PVC is fine here:
+# it only stores Airflow's own state, not pipeline data (that lives
+# in Snowflake). k3s provisions the PVC via its built-in
+# local-path StorageClass.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: marketpulse
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: marketpulse
+  labels:
+    app: postgres
+spec:
+  replicas: 1
+  # Recreate (not RollingUpdate) because two Postgres pods can't
+  # share the same ReadWriteOnce volume during a rollout.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: marketpulse-secrets
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+              # Subdir avoids Postgres complaining about lost+found
+              # in the volume root.
+              subPath: pgdata
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "airflow"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: marketpulse
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

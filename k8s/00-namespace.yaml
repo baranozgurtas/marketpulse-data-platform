@@ -1,0 +1,6 @@
+# Dedicated namespace so `kubectl delete namespace marketpulse`
+# tears down the whole deployment cleanly.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: marketpulse

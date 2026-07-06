@@ -1,0 +1,38 @@
+# One-shot initialization: migrate the Airflow metadata DB and create
+# the admin user. Mirrors the airflow-init service in docker-compose.
+# Jobs are immutable - `make deploy` deletes any previous run first.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: airflow-init
+  namespace: marketpulse
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: airflow-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: airflow-init
+          image: marketpulse/airflow:latest
+          # Never pulled from a registry - imported into k3s/k3d
+          # from the local Docker build (see Makefile).
+          imagePullPolicy: Never
+          envFrom:
+            - configMapRef:
+                name: marketpulse-config
+            - secretRef:
+                name: marketpulse-secrets
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              airflow db migrate && \
+              airflow users create \
+                --username admin \
+                --firstname Admin \
+                --lastname User \
+                --role Admin \
+                --email admin@marketpulse.dev \
+                --password admin

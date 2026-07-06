@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-scheduler
+  namespace: marketpulse
+  labels:
+    app: airflow-scheduler
+spec:
+  # Exactly one scheduler: LocalExecutor runs tasks inside the
+  # scheduler process, and multiple schedulers need extra DB setup.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: airflow-scheduler
+  template:
+    metadata:
+      labels:
+        app: airflow-scheduler
+    spec:
+      containers:
+        - name: scheduler
+          image: marketpulse/airflow:latest
+          imagePullPolicy: Never  # local image imported into the cluster
+          command: ["airflow", "scheduler"]
+          envFrom:
+            - configMapRef:
+                name: marketpulse-config
+            - secretRef:
+                name: marketpulse-secrets
+          # `airflow jobs check` verifies the scheduler heartbeat.
+          livenessProbe:
+            exec:
+              command:
+                - /bin/bash
+                - -c
+                - airflow jobs check --job-type SchedulerJob --local
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 30
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              memory: 2560Mi

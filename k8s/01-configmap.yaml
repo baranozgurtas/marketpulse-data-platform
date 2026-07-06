@@ -1,0 +1,24 @@
+# Non-secret configuration shared by the Airflow pods.
+# Anything credential-shaped lives in 02-secret.template.yaml instead.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: marketpulse-config
+  namespace: marketpulse
+data:
+  AIRFLOW__CORE__EXECUTOR: "LocalExecutor"
+  AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+  AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+  # Keep concurrency low: LocalExecutor runs tasks inside the
+  # scheduler pod, which is memory-constrained on a local node.
+  AIRFLOW__CORE__PARALLELISM: "2"
+  AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: "1"
+  AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+  # Fernet key intentionally empty, matching the docker-compose dev
+  # setup. Set a real key for anything beyond a local demo.
+  AIRFLOW__CORE__FERNET_KEY: ""
+  # Snowflake object names (match scripts/setup_snowflake.sql)
+  SNOWFLAKE_ROLE: "ACCOUNTADMIN"
+  SNOWFLAKE_DATABASE: "MARKETPULSE"
+  SNOWFLAKE_WAREHOUSE: "COMPUTE_WH"
+  SNOWFLAKE_SCHEMA: "CURATED"

@@ -1,0 +1,96 @@
+# Standalone Spark cluster mirroring the docker-compose setup.
+# The bitnami start scripts run in the foreground when
+# SPARK_NO_DAEMONIZE=true, which is what a container needs.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-master
+  namespace: marketpulse
+  labels:
+    app: spark-master
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spark-master
+  template:
+    metadata:
+      labels:
+        app: spark-master
+    spec:
+      containers:
+        - name: spark-master
+          image: marketpulse/spark:latest
+          imagePullPolicy: Never  # local image imported into the cluster
+          command: ["/opt/bitnami/spark/sbin/start-master.sh"]
+          env:
+            - name: SPARK_NO_DAEMONIZE
+              value: "true"
+            - name: SPARK_MASTER_HOST
+              value: "0.0.0.0"
+            - name: SPARK_MASTER_PORT
+              value: "7077"
+          ports:
+            - containerPort: 7077  # cluster protocol
+            - containerPort: 8080  # master web UI
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 768Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spark-master
+  namespace: marketpulse
+spec:
+  selector:
+    app: spark-master
+  ports:
+    - name: cluster
+      port: 7077
+      targetPort: 7077
+    - name: web-ui
+      port: 8081
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-worker
+  namespace: marketpulse
+  labels:
+    app: spark-worker
+spec:
+  replicas: 1  # scale with: kubectl -n marketpulse scale deploy/spark-worker --replicas=N
+  selector:
+    matchLabels:
+      app: spark-worker
+  template:
+    metadata:
+      labels:
+        app: spark-worker
+    spec:
+      containers:
+        - name: spark-worker
+          image: marketpulse/spark:latest
+          imagePullPolicy: Never  # local image imported into the cluster
+          command:
+            - /opt/bitnami/spark/sbin/start-worker.sh
+            - spark://spark-master:7077
+          env:
+            - name: SPARK_NO_DAEMONIZE
+              value: "true"
+            - name: SPARK_WORKER_MEMORY
+              value: "1g"
+            - name: SPARK_WORKER_CORES
+              value: "1"
+          resources:
+            # Sized to fit a small local k3d node alongside Airflow.
+            requests:
+              cpu: 250m
+              memory: 384Mi
+            limits:
+              memory: 1280Mi
