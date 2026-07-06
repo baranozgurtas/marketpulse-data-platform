@@ -1,0 +1,28 @@
+# ============================================================
+# MarketPulse - dbt profile (Snowflake)
+# ============================================================
+# All credentials come from environment variables - nothing is
+# hardcoded here. Copy .env.example to .env at the repo root,
+# fill it in, and export it before running dbt:
+#
+#   set -a && source .env && set +a
+#   dbt debug --profiles-dir dbt --project-dir dbt
+#
+# DBT_PROFILES_DIR can also be pointed at this directory.
+# ============================================================
+
+marketpulse:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'ACCOUNTADMIN') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'MARKETPULSE') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'COMPUTE_WH') }}"
+      # Base schema; models override via +schema (STAGED / CURATED)
+      # resolved verbatim by macros/generate_schema_name.sql.
+      schema: "{{ env_var('SNOWFLAKE_SCHEMA', 'CURATED') }}"
+      threads: 4

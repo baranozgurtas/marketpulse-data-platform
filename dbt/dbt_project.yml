@@ -1,0 +1,37 @@
+# ============================================================
+# MarketPulse Data Platform - dbt Project
+# ============================================================
+# Owns the STAGED -> CURATED transformations (previously the
+# stored procedures in sql/04_curated_tables.sql).
+# RAW -> STAGED remains owned by the PySpark jobs.
+# ============================================================
+
+name: "marketpulse"
+version: "1.0.0"
+config-version: 2
+
+profile: "marketpulse"
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  marketpulse:
+    staging:
+      # Thin, renamed views over the Spark-produced STAGED tables.
+      # Kept in the STAGED schema; names differ from the Spark tables
+      # (stg_market_* vs stg_*) so there is no collision.
+      +materialized: view
+      +schema: STAGED
+    marts:
+      # Business-ready dimensional model. Same object names and columns
+      # as sql/04_curated_tables.sql so downstream consumers
+      # (Streamlit dashboard) keep working unchanged.
+      +materialized: table
+      +schema: CURATED
