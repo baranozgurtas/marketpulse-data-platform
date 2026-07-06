@@ -14,14 +14,15 @@ import json
 from datetime import datetime, timedelta
 
 import requests
+import os
 import snowflake.connector
 
 # ============================================================
 # CONFIG — Update these with your Snowflake credentials
 # ============================================================
-SNOWFLAKE_ACCOUNT = "ch12697.eu-central-2.aws"
-SNOWFLAKE_USER = "YOUR_USERNAME_HERE" # Replace with your username
-SNOWFLAKE_PASSWORD = "YOUR_PASSWORD_HERE"  # Replace with your password
+SNOWFLAKE_ACCOUNT = os.environ["SNOWFLAKE_ACCOUNT"]
+SNOWFLAKE_USER = os.environ["SNOWFLAKE_USER"]
+SNOWFLAKE_PASSWORD = os.environ["SNOWFLAKE_PASSWORD"]
 SNOWFLAKE_DATABASE = "MARKETPULSE"
 SNOWFLAKE_WAREHOUSE = "COMPUTE_WH"
 
