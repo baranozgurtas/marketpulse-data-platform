@@ -2,36 +2,40 @@
 
 > Crypto market data platform with **Airflow** orchestration, **PySpark** processing, **dbt** transformations, and **Snowflake** medallion architecture (RAW → STAGED → CURATED), deployable to **Kubernetes (k3s)** and served via a **Streamlit** dashboard.
 
-A production-style data engineering pipeline demonstrating medallion architecture, incremental processing, idempotent orchestration, and distributed feature computation across a multi-source crypto dataset.
+**31 unit tests · 26 dbt data tests · deployed on k3s · live Snowflake-backed dashboard**
+
+A production-style data engineering pipeline demonstrating medallion architecture, idempotent orchestration, tested transformations, and distributed feature computation across a multi-source crypto dataset.
 
 ---
 
 ## Architecture
 
-```mermaid
-flowchart TD
-    CG[CoinGecko API<br/>OHLCV Prices] --> AF
-    AM[Alternative.me API<br/>Fear & Greed Index] --> AF
-
-    AF[Apache Airflow<br/>Orchestration]
-
-    subgraph SF[Snowflake Warehouse - MARKETPULSE]
-        RAW[(RAW<br/>append-only)]
-        STG[(STAGED<br/>cleaned + deduped)]
-        CUR[(CURATED<br/>dims, facts, marts)]
-    end
-
-    AF -- ingest DAGs --> RAW
-    RAW -- PySpark<br/>normalize + dedup --> STG
-    STG -- dbt run<br/>dbt test --> CUR
-
-    AF -. triggers .-> SPARK[PySpark Jobs]
-    AF -. triggers .-> DBT[dbt Project<br/>staging + marts + tests]
-
-    CUR --> ST[Streamlit Dashboard]
-
-    K8S[Kubernetes k3s<br/>Deployments, Services,<br/>ConfigMaps, Secrets] -. hosts .-> AF
-    K8S -. hosts .-> SPARK
+```
+  CoinGecko API          Alternative.me API
+  (OHLCV prices)         (Fear & Greed Index)
+        |                        |
+        +-----------+------------+
+                    v
+   +--------------------------------------------+
+   |            Kubernetes (k3s)                |
+   |                                            |
+   |   Apache Airflow ---- Spark Cluster        |
+   |   (orchestration)     (master + worker)    |
+   |        |                                   |
+   |   Postgres (Airflow metadata)              |
+   +--------|-----------------------------------+
+            | ingest DAGs
+            v
+   +--------------------------------------------+
+   |        Snowflake  (MARKETPULSE)            |
+   |                                            |
+   |   RAW ------------> STAGED -------------> CURATED
+   |   append-only       cleaned + deduped     dims, facts, marts
+   |            PySpark             dbt run
+   |                                dbt test
+   +--------------------|-----------------------+
+                        v
+               Streamlit Dashboard
 ```
 
 **Data flow:** APIs → Airflow ingests → Snowflake RAW (append-only) → PySpark normalizes + dedups → Snowflake STAGED → dbt builds + tests → Snowflake CURATED → Streamlit dashboard.
@@ -46,14 +50,20 @@ flowchart TD
 Connected to Snowflake's `CURATED` layer, showing market analytics across 10 crypto assets with interactive multi-asset time series and 30-day rolling volatility.
 
 ### Volatility Regime Timeline & Fear & Greed Correlation
-<img width="1431" height="709" alt="Screenshot 2026-04-15 at 3 15 50 PM" src="https://github.com/user-attachments/assets/e324d81b-5435-41b9-a141-484389b0ad84" />
+<img width="1431" height="709" alt="regime timeline" src="https://github.com/user-attachments/assets/e324d81b-5435-41b9-a141-484389b0ad84" />
 
 Color-coded daily regime classification (LOW / NORMAL / HIGH / EXTREME) per asset, alongside Fear & Greed Index vs daily returns scatter.
 
 ### Max Drawdown Comparison
-<img width="1429" height="716" alt="Screenshot 2026-04-15 at 3 15 59 PM" src="https://github.com/user-attachments/assets/ea2182c2-7420-4a6a-9293-083bd4874eab" />
+<img width="1429" height="716" alt="max drawdown" src="https://github.com/user-attachments/assets/ea2182c2-7420-4a6a-9293-083bd4874eab" />
 
 30-day max drawdown comparison across tracked assets, revealing relative risk exposure.
+
+### dbt DAG on Kubernetes (k3d)
+
+<img width="1438" height="728" alt="Screenshot 2026-07-06 at 4 45 55 PM" src="https://github.com/user-attachments/assets/43fbda5b-3dbb-4d1e-aa0d-c024973dc6ff" />
+The `marketpulse_transform_dbt` DAG (`dbt run` → `dbt test`) executing successfully on a local k3s cluster against live Snowflake. 
+
 
 ---
 
@@ -66,8 +76,7 @@ Color-coded daily regime classification (LOW / NORMAL / HIGH / EXTREME) per asse
 | Distributed Processing | Apache Spark (PySpark) |
 | Transformation & Testing | dbt (dbt-snowflake) |
 | Dashboard | Streamlit + Plotly |
-| Containerization | Docker Compose |
-| Deployment | Kubernetes (k3s), plain manifests |
+| Containerization & Deployment | Docker Compose (dev), Kubernetes k3s with plain manifests (deploy) |
 | Language | Python, SQL |
 
 ---
@@ -80,7 +89,7 @@ Color-coded daily regime classification (LOW / NORMAL / HIGH / EXTREME) per asse
 
 3. **Modeling (dbt)** — Builds `dim_asset`, `fact_market_daily`, and `mart_volatility` in the **Snowflake `CURATED`** layer via a dbt project with schema and singular data tests. Features volatility regime classification (LOW / NORMAL / HIGH / EXTREME).
 
-4. **Quality Gates** — Null checks, duplicate detection, freshness validation, and volume anomaly detection run between pipeline stages as Airflow tasks.
+4. **Quality Gates** — Null checks, duplicate detection, freshness validation, and volume anomaly detection run between pipeline stages as Airflow tasks, plus 26 dbt data tests on the CURATED build.
 
 5. **Consumption** — Streamlit dashboard connects directly to **Snowflake** and visualizes price trends, rolling volatility, regime timelines, Fear & Greed correlation, and max drawdown comparison.
 
@@ -98,9 +107,9 @@ The warehouse follows a **medallion architecture** across three schemas:
 - `stg_prices` — Normalized prices with UTC timestamps, one row per `(asset_id, date)`
 - `stg_sentiment` — Cleaned sentiment scores, one row per date
 
-### `CURATED` schema (business-ready)
+### `CURATED` schema (business-ready, built by dbt)
 - `dim_asset` — Asset dimension with `first_seen_date`, `last_seen_date`
-- `fact_market_daily` — Daily price, volume, returns, volatility metrics per asset
+- `fact_market_daily` — Daily price, volume, returns, and Fear & Greed per asset
 - `mart_volatility` — Analytics view with rolling 7d/30d volatility, 30d max drawdown, and regime classification
 
 ---
@@ -111,23 +120,25 @@ Current pipeline run (Snowflake):
 
 | Table | Records |
 |---|---|
-| `RAW.raw_prices` | 6,966 |
-| `RAW.raw_sentiment` | 730 |
-| `STAGED.stg_prices` (deduped) | 3,473 |
+| `RAW.raw_prices` | 3,400 |
+| `RAW.raw_sentiment` | 365 |
+| `STAGED.stg_prices` (deduped) | 3,390 |
 | `STAGED.stg_sentiment` | 365 |
-| `CURATED.fact_market_daily` | 3,473 |
-| `CURATED.mart_volatility` | 3,473 |
+| `CURATED.fact_market_daily` | 3,389 |
+| `CURATED.mart_volatility` | 3,389 |
 
-10 assets × 365 days of historical data, with dedup reducing RAW→STAGED by ~50% on reprocessed data — demonstrates the dedup logic working correctly.
+10 assets × 365 days. Deduplication removes duplicate `(asset_id, date)` rows between RAW and STAGED; the dbt staging contract then filters one additional record — a deprecated asset reported by the API with all-zero prices — which was caught by the `assert_prices_non_negative` dbt test on the first live run.
 
 **Volatility regime distribution:**
 
 | Regime | Count |
 |---|---|
-| NORMAL | 2,605 |
-| HIGH | 583 |
-| LOW | 236 |
+| NORMAL | 2,600 |
+| HIGH | 519 |
+| LOW | 221 |
 | EXTREME | 29 |
+
+The first ~29 days per asset have no regime, as the 30-day rolling window is not yet full.
 
 ---
 
@@ -150,7 +161,7 @@ marketpulse-data-platform/
 │   ├── 01_schemas.sql           # RAW, STAGED, CURATED schemas
 │   ├── 02_raw_tables.sql
 │   ├── 03_staged_tables.sql
-│   ├── 04_curated_tables.sql    # Facts, dims, marts
+│   ├── 04_curated_tables.sql    # Facts, dims, marts (superseded by dbt)
 │   └── 05_quality_checks.sql
 ├── dbt/                         # dbt project (STAGED → CURATED)
 │   ├── dbt_project.yml
@@ -168,7 +179,7 @@ marketpulse-data-platform/
 │   ├── docker-compose.yml
 │   ├── Dockerfile.airflow
 │   └── Dockerfile.spark
-├── tests/                       # Unit tests for transforms
+├── tests/                       # Unit tests
 ├── docs/                        # Architecture decisions + images
 ├── config/                      # Settings template
 ├── load_data.py                 # Standalone data loader
@@ -189,6 +200,7 @@ marketpulse-data-platform/
 | Append-only RAW + dedup-on-load | Makes pipeline idempotent — reruns don't create duplicates in downstream layers |
 | Batch metadata (`_batch_id`, `_ingested_at`) | Enables lineage tracing and time-travel debugging |
 | Quality gates between layers | Blocks bad data from propagating; fails fast on schema drift or anomalies |
+| dbt in an isolated venv inside the Airflow image | Avoids dependency conflicts between Airflow and dbt while keeping `BashOperator` calls trivially reproducible |
 
 ---
 
@@ -204,7 +216,9 @@ pytest tests/ -v
 ============================== 31 passed in 0.04s ==============================
 ```
 
-The dbt project additionally ships schema tests (`unique`, `not_null`, `accepted_values`, `relationships`) and singular data tests (non-negative prices, no future dates, Fear & Greed bounded 0-100, fact-table grain uniqueness), executed with `dbt test`.
+The dbt project additionally ships schema tests (`unique`, `not_null`, `accepted_values`, `relationships`) and singular data tests (non-negative prices, no future dates, Fear & Greed bounded 0-100, fact-table grain uniqueness), executed with `dbt test` — 26 data tests in total.
+
+**Real-world catch:** on the first full run against live data, `assert_prices_non_negative` failed on exactly one row — a deprecated asset reported with all-zero prices by the CoinGecko API. The staging model contract was tightened to filter such records at the boundary, and the suite now passes. A concrete example of data tests catching real data-quality issues, not hypothetical ones.
 
 ---
 
@@ -232,14 +246,14 @@ pip install -r requirements.txt
 # provisions warehouse + database + all schemas/tables from scratch)
 
 # 4. Configure credentials
-cp config/settings.example.py config/settings.py
-# Edit config/settings.py with your Snowflake credentials
 cp .env.example .env
-# Edit .env — used by dbt and docker-compose
+# Edit .env — used by load_data.py, dbt, and docker-compose
+set -a && source .env && set +a
 
 # 5. Run the pipeline
-python load_data.py              # Standalone: API → Snowflake full pipeline
-python spark_jobs/run_local.py   # Spark-based processing layer
+python load_data.py                              # APIs -> RAW -> STAGED
+dbt run  --project-dir dbt --profiles-dir dbt    # STAGED -> CURATED
+dbt test --project-dir dbt --profiles-dir dbt    # 26 data tests
 
 # 6. Launch dashboard
 streamlit run streamlit_app/app.py
@@ -311,6 +325,7 @@ Notes:
 - Images use `imagePullPolicy: Never` — they are built locally and imported into the cluster, never pulled from a registry.
 - The Airflow UI is exposed via `NodePort` 30080 (simplest option without an Ingress controller).
 - `k8s/02-secret.yaml` (the filled-in copy) is gitignored.
+- Resource requests/limits are sized for a small local node; concurrency is capped (`AIRFLOW__CORE__PARALLELISM=2`) because LocalExecutor runs tasks inside the scheduler pod.
 
 ---
 
@@ -319,22 +334,17 @@ Notes:
 | Choice | Trade-off |
 |---|---|
 | `OVERWRITE` mode in Spark → Snowflake STAGED | Simpler than incremental MERGE for this volume; production would use MERGE for larger tables |
-| Single Spark worker | Sufficient for 3.5K records; scales by adding workers in Docker Compose |
+| Full-rebuild dbt models | Idempotent and simple at ~3.4K rows; switch to incremental materializations as volume grows |
+| Single Spark worker | Sufficient for 3.4K records; scales by adding workers |
 | CoinGecko free tier | Rate-limited (~10 req/min); acceptable for daily batch |
 | Daily batch frequency | Matches sentiment data cadence; switch to hourly DAGs for near-real-time |
 
-### To Scale to Production
-- ~~Migrate mart layer to **dbt** for lineage + testing~~ — done, see [dbt Transformations](#dbt-transformations)
-- ~~Container orchestration~~ — done for local k3s, see [Kubernetes Deployment](#kubernetes-deployment-k3s)
-- Swap Docker Compose for **EMR / Dataproc** with cluster mode Spark
-- Add **Kafka / Kinesis** ingestion for real-time tick data
 
 ---
 
 ## Future Work
 
+- CI/CD with GitHub Actions (pytest + `dbt parse` + kubeconform on every push)
+- Swap Docker Compose for **EMR / Dataproc** with cluster-mode Spark
+- **Kafka / Kinesis** ingestion for real-time tick data
 - Exchange trade data (Binance API) for liquidity mart
-- CI/CD with GitHub Actions
-- Cloud deployment with scheduled runs
-
----
