@@ -205,3 +205,16 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+dbt/.user.yml
+
+# Kubernetes (filled-in secret - never commit)
+k8s/02-secret.yaml
+
+# macOS
+.DS_Store
+streamlit_app/.streamlit/
