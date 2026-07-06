@@ -1,0 +1,55 @@
+version: 2
+
+models:
+  - name: dim_asset
+    description: >
+      Asset dimension - one row per tracked crypto asset, with first
+      and last observed price dates.
+    columns:
+      - name: asset_id
+        description: CoinGecko asset ID. Primary key.
+        tests:
+          - unique
+          - not_null
+      - name: symbol
+        tests:
+          - not_null
+      - name: first_seen_date
+        tests:
+          - not_null
+      - name: last_seen_date
+        tests:
+          - not_null
+
+  - name: fact_market_daily
+    description: >
+      Daily market fact table - one row per (asset_id, date) with OHLCV,
+      derived returns, and the Fear & Greed score joined on date.
+    columns:
+      - name: asset_id
+        description: Part of the composite primary key (asset_id, date).
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_asset')
+              field: asset_id
+      - name: date
+        description: Part of the composite primary key (asset_id, date).
+        tests:
+          - not_null
+      - name: close
+        tests:
+          - not_null
+
+  - name: mart_volatility
+    description: >
+      Volatility analytics view - rolling 7d/30d volatility, 30d max
+      drawdown, and a categorical volatility regime per asset per day.
+    columns:
+      - name: volatility_regime
+        description: Bucketed 30d volatility classification.
+        tests:
+          - accepted_values:
+              values: ['LOW', 'NORMAL', 'HIGH', 'EXTREME']
+              # NULL rows (first days without a full window) are
+              # ignored by accepted_values by default.

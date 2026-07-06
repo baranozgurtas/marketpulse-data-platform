@@ -1,0 +1,41 @@
+version: 2
+
+# ============================================================
+# Sources: the STAGED layer produced by the PySpark jobs
+# (spark_jobs/process_prices.py, spark_jobs/process_sentiment.py)
+# or by the manual loader (load_data.py). dbt reads from here;
+# it does not own these tables.
+# ============================================================
+
+sources:
+  - name: staged
+    database: "{{ env_var('SNOWFLAKE_DATABASE', 'MARKETPULSE') }}"
+    schema: STAGED
+    description: >
+      Cleaned, deduplicated data produced by the Spark processing jobs
+      from the RAW layer. One row per (asset_id, date) for prices and
+      one row per date for sentiment.
+    tables:
+      - name: stg_prices
+        description: Deduplicated daily OHLCV prices per crypto asset.
+        columns:
+          - name: asset_id
+            description: CoinGecko asset ID (e.g. 'bitcoin').
+            tests:
+              - not_null
+          - name: date
+            description: Price date.
+            tests:
+              - not_null
+      - name: stg_sentiment
+        description: Deduplicated daily Fear & Greed Index values.
+        columns:
+          - name: date
+            description: Sentiment date (unique per day).
+            tests:
+              - unique
+              - not_null
+          - name: fear_greed_value
+            description: Fear & Greed Index score, 0-100.
+            tests:
+              - not_null

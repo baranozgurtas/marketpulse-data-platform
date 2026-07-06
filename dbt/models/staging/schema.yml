@@ -1,0 +1,36 @@
+version: 2
+
+models:
+  - name: stg_market_prices
+    description: Staging view over the Spark-produced STAGED.stg_prices.
+    columns:
+      - name: asset_id
+        tests:
+          - not_null
+      - name: date
+        tests:
+          - not_null
+      - name: close
+        tests:
+          - not_null
+
+  - name: stg_market_sentiment
+    description: Staging view over the Spark-produced STAGED.stg_sentiment.
+    columns:
+      - name: date
+        tests:
+          - unique
+          - not_null
+      - name: fear_greed_value
+        tests:
+          - not_null
+      - name: classification
+        description: Alternative.me Fear & Greed classification label.
+        tests:
+          - accepted_values:
+              values:
+                - 'Extreme Fear'
+                - 'Fear'
+                - 'Neutral'
+                - 'Greed'
+                - 'Extreme Greed'
