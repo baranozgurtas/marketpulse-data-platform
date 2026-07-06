@@ -5,8 +5,9 @@ version: '3.8'
 
 x-airflow-common: &airflow-common
   build:
-    context: .
-    dockerfile: Dockerfile.airflow
+    # Context is the repo root so the Dockerfile can COPY dags/ and dbt/
+    context: ..
+    dockerfile: docker/Dockerfile.airflow
   environment:
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
@@ -14,12 +15,22 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
-    # Snowflake connection — override with your credentials
-    AIRFLOW_CONN_SNOWFLAKE_DEFAULT: 'snowflake://user:password@account/MARKETPULSE?warehouse=COMPUTE_WH'
+    # Snowflake connection — values substituted from ../.env
+    # (docker compose --env-file ../.env) or exported shell vars.
+    AIRFLOW_CONN_SNOWFLAKE_DEFAULT: 'snowflake://${SNOWFLAKE_USER:-user}:${SNOWFLAKE_PASSWORD:-password}@${SNOWFLAKE_ACCOUNT:-account}/${SNOWFLAKE_DATABASE:-MARKETPULSE}?warehouse=${SNOWFLAKE_WAREHOUSE:-COMPUTE_WH}'
+    # dbt (dbt/profiles.yml) reads these directly:
+    SNOWFLAKE_ACCOUNT: ${SNOWFLAKE_ACCOUNT:-}
+    SNOWFLAKE_USER: ${SNOWFLAKE_USER:-}
+    SNOWFLAKE_PASSWORD: ${SNOWFLAKE_PASSWORD:-}
+    SNOWFLAKE_ROLE: ${SNOWFLAKE_ROLE:-ACCOUNTADMIN}
+    SNOWFLAKE_DATABASE: ${SNOWFLAKE_DATABASE:-MARKETPULSE}
+    SNOWFLAKE_WAREHOUSE: ${SNOWFLAKE_WAREHOUSE:-COMPUTE_WH}
+    SNOWFLAKE_SCHEMA: ${SNOWFLAKE_SCHEMA:-CURATED}
   volumes:
     - ../dags:/opt/airflow/dags
     - ../spark_jobs:/opt/airflow/spark_jobs
     - ../config:/opt/airflow/config
+    - ../dbt:/opt/airflow/dbt
     - airflow-logs:/opt/airflow/logs
   depends_on:
     postgres:
@@ -84,8 +95,8 @@ services:
   # -----------------------------------------------
   spark-master:
     build:
-      context: .
-      dockerfile: Dockerfile.spark
+      context: ..
+      dockerfile: docker/Dockerfile.spark
     command: /opt/spark/sbin/start-master.sh
     environment:
       SPARK_MASTER_HOST: spark-master
@@ -102,8 +113,8 @@ services:
   # -----------------------------------------------
   spark-worker:
     build:
-      context: .
-      dockerfile: Dockerfile.spark
+      context: ..
+      dockerfile: docker/Dockerfile.spark
     command: /opt/spark/sbin/start-worker.sh spark://spark-master:7077
     environment:
       SPARK_WORKER_MEMORY: 2g
