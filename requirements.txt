@@ -1,22 +1,23 @@
-# MarketPulse Data Platform — Dependencies
+# MarketPulse Data Platform - Local Dependencies
+# NOTE: Airflow and its Snowflake provider are NOT installed locally.
+# They run inside the Docker image (docker/Dockerfile.airflow), because
+# Airflow 2.8 requires Python <3.12 and local Python is usually newer.
 
-# Orchestration
-apache-airflow==2.8.1
-apache-airflow-providers-snowflake==5.3.0
+# Ingestion / Snowflake
+snowflake-connector-python
+requests
 
-# Processing
+# Transformation
+dbt-core
+dbt-snowflake
+
+# Processing (local Spark runs only)
 pyspark==3.5.0
 
-# Snowflake
-snowflake-connector-python==3.6.0
-
-# Ingestion
-requests==2.31.0
-
 # Dashboard
-streamlit==1.31.0
-plotly==5.18.0
-pandas==2.1.4
+streamlit
+plotly
+pandas
 
 # Testing
-pytest==7.4.4
+pytest
